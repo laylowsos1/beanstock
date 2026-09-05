@@ -13,6 +13,7 @@ contains no live-trading path.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -92,6 +93,14 @@ class Broker(ABC):
 
     @abstractmethod
     def get_quote(self, ticker: str) -> Optional[Decimal]:
+        ...
+
+    @abstractmethod
+    def get_quote_timestamp(self, ticker: str) -> Optional[datetime]:
+        """When the currently-loaded quote for `ticker` is as-of. None if
+        no quote is loaded. Used by broker.gateway.BrokerGateway to
+        reject stale quotes before execution.
+        """
         ...
 
     @abstractmethod

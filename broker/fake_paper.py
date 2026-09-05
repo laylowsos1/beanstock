@@ -116,11 +116,16 @@ class FakePaperBroker(Broker):
     # Fake quotes
     # -----------------------------------------------------------------
 
-    def set_quote(self, ticker: str, price) -> None:
+    def set_quote(self, ticker: str, price, timestamp: Optional[datetime] = None) -> None:
         """Load (or overwrite) a fake quote. Accepts int/float/str/Decimal,
         including invalid values (zero, negative, NaN) so tests can
         exercise the broker's price-validation defenses -- set_quote
         itself does not reject them; submit_execution_intent does.
+
+        timestamp records when this quote is "as of" (defaults to now,
+        UTC). broker.gateway.BrokerGateway uses get_quote_timestamp() to
+        detect stale quotes -- pass an explicit past timestamp to
+        simulate one in tests.
         """
         if not (isinstance(ticker, str) and ticker.strip()):
             raise ValueError("ticker must be a non-empty string")
@@ -129,9 +134,22 @@ class FakePaperBroker(Broker):
             # store an explicit NaN sentinel rather than silently
             # dropping the (deliberately) bad value
             d = Decimal("NaN")
-        self._quotes[ticker.strip().upper()] = d
+        if timestamp is None:
+            timestamp = datetime.now(timezone.utc)
+        self._quotes[ticker.strip().upper()] = (d, timestamp)
 
     def get_quote(self, ticker: str) -> Optional[Decimal]:
+        entry = self._get_quote_entry(ticker)
+        return entry[0] if entry else None
+
+    def get_quote_timestamp(self, ticker: str) -> Optional[datetime]:
+        """When the currently-loaded quote for `ticker` was set. None if
+        no quote is loaded for that ticker at all.
+        """
+        entry = self._get_quote_entry(ticker)
+        return entry[1] if entry else None
+
+    def _get_quote_entry(self, ticker: str):
         if not isinstance(ticker, str):
             return None
         return self._quotes.get(ticker.strip().upper())
