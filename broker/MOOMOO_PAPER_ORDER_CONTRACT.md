@@ -56,6 +56,15 @@ independently verified.
 - Method / path: `GET /api/v1.0/sim-trade/{acc_id}/max-buy-sell`
 - Query — required: `symbol` (string), `order_type` (int, same enum as #1)
 - Query — optional: `price` (string, "required for limit orders"), `order_id` (string, "for modification")
+- **`market` query parameter, corrected against a real call:** not
+  listed on this endpoint's own doc page at all, but a real call
+  without it returned `ret_code=-3`, `ret_msg="missing required
+  parameter: market"` — the identical failure mode already seen on the
+  Today's Orders endpoint (#1). The adapter now always sends
+  `market=<US_MARKET_ID>` here too. Confirmed during the first real
+  readiness audit (this session): F/SOFI/AAL all returned this error
+  before the fix, and returned valid `max_cash_buy_qty_round_lot`
+  values after it.
 - Response fields used: `max_cash_buy_qty_round_lot` (string)
 - Response fields not used: `max_margin_buy_qty_round_lot`, `max_sell_qty_round_lot`, `max_sell_short_qty`, `max_buy_back_qty`, `required_im_long`, `required_im_short` (futures margin, not applicable — Beanstock trades no margin/futures)
 - Auth: not restated on this page; same project-wide Bearer requirement applies.

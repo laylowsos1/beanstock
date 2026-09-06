@@ -628,7 +628,13 @@ class MoomooPaperBroker(Broker):
         if normalized is None:
             return None
         path = MAX_BUY_SELL_PATH_TEMPLATE.format(acc_id=account_id)
-        payload = self._get_json(path, params={"symbol": normalized, "order_type": ORDER_TYPE_MARKET})
+        # `market` is undocumented as required on this endpoint's own doc
+        # page, but a real call without it fails the same way the
+        # orders endpoint's did (ret_code=-3 "missing required parameter:
+        # market") -- see broker/MOOMOO_PAPER_ORDER_CONTRACT.md.
+        payload = self._get_json(
+            path, params={"symbol": normalized, "order_type": ORDER_TYPE_MARKET, "market": US_MARKET_ID}
+        )
         data = self._unwrap_envelope(path, payload)
         return _to_decimal(data.get("max_cash_buy_qty_round_lot"))
 

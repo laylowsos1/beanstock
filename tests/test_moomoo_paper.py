@@ -754,6 +754,11 @@ def test_max_buy_quantity_helper():
     broker = make_paper_broker(transport)
     assert broker.max_buy_quantity("ABC") == Decimal("42")
 
+    # A real call without `market` failed with ret_code=-3 "missing
+    # required parameter: market" (see broker/MOOMOO_PAPER_ORDER_CONTRACT.md).
+    call = next(c for c in transport.calls if c[1] == MAX_BUY_SELL_PATH_TEMPLATE.format(acc_id=DEFAULT_ACCOUNT_ID))
+    assert call[2] == {"symbol": "ABC", "order_type": ORDER_TYPE_MARKET, "market": US_MARKET_ID}
+
 
 # ---------------------------------------------------------------------
 # Item 10 -- full mock integration test
