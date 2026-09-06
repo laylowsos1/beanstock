@@ -212,12 +212,27 @@ class PaperWriteController:
         self,
         *,
         write_enabled: Optional[bool] = None,
+        enforce_network_write_gate: bool = True,
         first_order_test_mode: bool = False,
         first_test_max_notional: Decimal = DEFAULT_FIRST_TEST_MAX_NOTIONAL,
         max_intent_age_seconds: float = DEFAULT_MAX_INTENT_AGE_SECONDS,
         max_quote_age_seconds: float = DEFAULT_MAX_QUOTE_AGE_SECONDS,
     ):
+        """enforce_network_write_gate defaults True -- unchanged behavior
+        for every existing (moomoo-targeting) caller. Set it False only
+        when the broker this controller will submit() against is a
+        purely local target with no HTTP surface at all (e.g.
+        broker.fake_paper.FakePaperBroker in
+        execution.real_data_paper_session.RealDataPaperSession) -- in
+        that case BEANSTOCK_PAPER_WRITE_ENABLED and the moomoo write-path
+        firewall are both meaningless (there is no real write to gate or
+        firewall) and are skipped. Every OTHER gate -- ARMED state,
+        SAFE_MODE, daily-loss/weekly-drawdown, staleness, duplicate
+        tracking, FIRST_ORDER_TEST_MODE's notional cap -- still applies
+        exactly the same regardless of this flag.
+        """
         self._state = STATE_DISARMED
+        self._enforce_network_write_gate = bool(enforce_network_write_gate)
 
         if write_enabled is None:
             write_enabled = _env_flag_enabled(os.environ.get(ENV_WRITE_ENABLED))
@@ -301,8 +316,10 @@ class PaperWriteController:
 
         # --- write-enabled flag -- independent re-check of the exact
         #     same env-var-backed flag broker.moomoo_paper.MoomooPaperBroker
-        #     itself gates on. ---
-        if not self._write_enabled:
+        #     itself gates on. Skipped when enforce_network_write_gate is
+        #     False -- meaningless for a purely local target with no real
+        #     write to gate (see __init__'s docstring). ---
+        if self._enforce_network_write_gate and not self._write_enabled:
             return self._reject([f"{ENV_WRITE_ENABLED} is False."], audit_reference, now), None
 
         # --- execution_allowed / account_mode -- LIVE mode can never
@@ -378,17 +395,21 @@ class PaperWriteController:
 
         # --- resolve the simulated US account, and firewall the exact
         #     write path MoomooPaperBroker would use -- independent of
-        #     that broker's own path guard. ---
-        try:
-            account_id = broker.resolve_simulated_us_account_id()
-        except Exception as exc:
-            return self._reject([f"Could not resolve a simulated US account: {exc!r}"], audit_reference, now), None
+        #     that broker's own path guard. Skipped when
+        #     enforce_network_write_gate is False: a purely local target
+        #     (broker.fake_paper.FakePaperBroker) has no account to
+        #     resolve and no HTTP path to firewall at all. ---
+        if self._enforce_network_write_gate:
+            try:
+                account_id = broker.resolve_simulated_us_account_id()
+            except Exception as exc:
+                return self._reject([f"Could not resolve a simulated US account: {exc!r}"], audit_reference, now), None
 
-        write_path = OPEN_ORDERS_PATH_TEMPLATE.format(acc_id=account_id)
-        try:
-            guard_write_path(write_path)
-        except PathFirewallViolation as exc:
-            return self._reject([str(exc)], audit_reference, now), None
+            write_path = OPEN_ORDERS_PATH_TEMPLATE.format(acc_id=account_id)
+            try:
+                guard_write_path(write_path)
+            except PathFirewallViolation as exc:
+                return self._reject([str(exc)], audit_reference, now), None
 
         # --- quote freshness -- independent re-check. ---
         ticker = (intent.ticker or "").strip().upper() if intent.ticker else None
