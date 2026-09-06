@@ -139,6 +139,12 @@ class SimulatedTradeRecord:
     rejection_reason: Optional[str]
     opened_at: str
 
+    # Optional -- carried from the proposal's own "sector" field so
+    # callers (e.g. runner/daily_session.py) can attribute a held
+    # position's market value to a sector without FakePaperBroker's own
+    # Position needing to know about sectors at all.
+    sector: Optional[str] = None
+
     # Updated over time by update_open_trade_tracking() -- always from a
     # fresh real quote, never carried over/estimated.
     latest_real_quote: Optional[Decimal] = None
@@ -231,6 +237,12 @@ class RealDataPaperSession:
         self._starting_equity: Optional[Decimal] = None
         self._benchmark_start_price: Optional[Decimal] = None
         self._benchmark_start_timestamp: Optional[str] = None
+
+    @property
+    def starting_equity(self) -> Optional[Decimal]:
+        """None until the first evaluate_and_submit()/daily_snapshot()
+        call establishes it (from FakePaperBroker's own live equity)."""
+        return self._starting_equity
 
     # -----------------------------------------------------------------
     # Real quotes -> local execution
@@ -325,6 +337,7 @@ class RealDataPaperSession:
             status=order.status if order else "REJECTED",
             rejection_reason=(order.rejection_reason if order else "; ".join(controller_result.reasons)) or None,
             opened_at=datetime.now(timezone.utc).isoformat(),
+            sector=normalized.get("sector"),
         )
         if order is not None and order.status == "FILLED" and order.realized_pnl is not None:
             record.realized_pnl = order.realized_pnl

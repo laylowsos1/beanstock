@@ -508,6 +508,37 @@ class MoomooReadOnlyBroker(Broker):
         self._quote_cache[normalized] = (price, timestamp)
         return price
 
+    def get_daily_change_pct(self, ticker: str) -> Optional[Decimal]:
+        """Day-over-day % change (last_price vs. prev_close_price), both
+        from the same verified Stock Quote contract as get_quote() (see
+        broker/MOOMOO_API_CONTRACT.md). A separate real call -- not
+        derived from get_quote()'s cache -- used for sector/benchmark
+        momentum context (runner/daily_session.py). Returns None only
+        for an invalid ticker string; raises the same
+        MalformedResponseError as get_quote() for a malformed or
+        missing response rather than ever inventing a figure.
+        """
+        if not (isinstance(ticker, str) and ticker.strip()):
+            return None
+        normalized = ticker.strip().upper()
+
+        payload = self._post_json(QUOTE_PATH, json_body={"code_list": [self._qualify_code(normalized)]})
+        data = self._unwrap_envelope(QUOTE_PATH, payload)
+        raw_quotes = data.get("quote_list")
+        if not isinstance(raw_quotes, list) or not raw_quotes:
+            raise MalformedResponseError(f"Quote response has no quote_list entry for {normalized!r}.")
+        raw = raw_quotes[0]
+        if not isinstance(raw, dict):
+            raise MalformedResponseError("Quote entry is not an object.")
+
+        last_price = _to_decimal(raw.get("last_price"))
+        prev_close = _to_decimal(raw.get("prev_close_price"))
+        if last_price is None or last_price <= 0 or prev_close is None or prev_close <= 0:
+            raise MalformedResponseError(
+                f"Quote for {normalized!r} has no valid last_price/prev_close_price."
+            )
+        return (last_price - prev_close) / prev_close * 100
+
     def _parse_quote_timestamp(self, raw_data_time) -> Optional[datetime]:
         """data_time is documented as a millisecond epoch timestamp
         (https://open.moomoo.com/api/quote/realtime/stock-quote)."""

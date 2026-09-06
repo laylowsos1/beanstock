@@ -384,6 +384,28 @@ def test_quote_maps_correctly_and_sends_documented_request_shape():
     assert quote_call[2] == {"code_list": ["US.AAPL"]}
 
 
+def test_daily_change_pct_computed_from_real_fields():
+    transport = FakeHttpTransport()
+    transport.queue_post(
+        QUOTE_PATH,
+        json_response(200, envelope({"quote_list": [{"code": "US.XLK", "last_price": 187.28, "prev_close_price": 185.97, "data_time": 1788552000000}]})),
+    )
+    broker = make_broker(transport)
+    change_pct = broker.get_daily_change_pct("XLK")
+    assert change_pct == (Decimal("187.28") - Decimal("185.97")) / Decimal("185.97") * 100
+
+
+def test_daily_change_pct_missing_prev_close_fails_closed():
+    transport = FakeHttpTransport()
+    transport.queue_post(
+        QUOTE_PATH,
+        json_response(200, envelope({"quote_list": [{"code": "US.XLK", "last_price": 187.28, "data_time": 1788552000000}]})),
+    )
+    broker = make_broker(transport)
+    with pytest.raises(MalformedResponseError):
+        broker.get_daily_change_pct("XLK")
+
+
 def test_quote_timestamp_is_preserved_from_server_not_local_now():
     transport = FakeHttpTransport()
     transport.queue_post(
